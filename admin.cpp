@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ////////////////////////////////////////////////////////////////////////
-#include "otpch.h"
 #ifdef __OTADMIN__
+#include "otpch.h"
 #include <iostream>
 
 #include "admin.h"
@@ -327,12 +327,9 @@ void ProtocolAdmin::parsePacket(NetworkMessage& msg)
 				case CMD_SAVE_SERVER:
 				case CMD_SHALLOW_SAVE_SERVER:
 				{
-					uint8_t flags = (uint8_t)SAVE_PLAYERS | (uint8_t)SAVE_MAP | (uint8_t)SAVE_STATE;
-					if(command == CMD_SHALLOW_SAVE_SERVER)
-						flags |= SAVE_PLAYERS_SHALLOW;
-
 					addLogLine(LOGTYPE_EVENT, "saving server");
-					Dispatcher::getInstance().addTask(createTask(boost::bind(&Game::saveGameState, &g_game, flags)));
+					Dispatcher::getInstance().addTask(createTask(boost::bind(
+						&Game::saveGameState, &g_game, (command == CMD_SHALLOW_SAVE_SERVER))));
 
 					output->put<char>(AP_MSG_COMMAND_OK);
 					break;
@@ -382,6 +379,7 @@ void ProtocolAdmin::parsePacket(NetworkMessage& msg)
 					break;
 				}
 
+				// why do we run these below on dispatcher thread anyway?
 				case CMD_KICK:
 				{
 					const std::string param = msg.getString();
@@ -440,28 +438,20 @@ void ProtocolAdmin::parsePacket(NetworkMessage& msg)
 		OutputMessagePool::getInstance()->send(output);
 }
 
-void ProtocolAdmin::releaseProtocol()
+void ProtocolAdmin::deleteProtocolTask()
 {
 	addLogLine(LOGTYPE_EVENT, "end connection");
 	Admin::getInstance()->removeConnection();
-	Protocol::releaseProtocol();
-}
-
-#ifdef __DEBUG_NET_DETAIL__
-void ProtocolAdmin::deleteProtocolTask()
-{
-	std::clog << "Deleting ProtocolAdmin" << std::endl;
 	Protocol::deleteProtocolTask();
 }
 
-#endif
 void ProtocolAdmin::adminCommandPayHouses()
 {
 	OutputMessage_ptr output = OutputMessagePool::getInstance()->getOutputMessage(this, false);
 	if(!output)
 		return;
 
-	Houses::getInstance()->check();
+	Houses::getInstance()->payHouses();
 	addLogLine(LOGTYPE_EVENT, "pay houses ok");
 
 	TRACK_MESSAGE(output);
@@ -514,10 +504,12 @@ void ProtocolAdmin::adminCommandSendMail(const std::string& xmlData)
 		return;
 
 	std::string name;
+	uint32_t depotId;
+
 	TRACK_MESSAGE(output);
-	if(Item* mailItem = Admin::createMail(xmlData, name))
+	if(Item* mailItem = Admin::createMail(xmlData, name, depotId))
 	{
-		if(IOLoginData::getInstance()->playerMail(NULL, name, mailItem))
+		if(IOLoginData::getInstance()->playerMail(NULL, name, depotId, mailItem))
 		{
 			addLogLine(LOGTYPE_EVENT, "sent mailbox to " + name);
 			output->put<char>(AP_MSG_COMMAND_OK);
@@ -539,7 +531,7 @@ void ProtocolAdmin::adminCommandSendMail(const std::string& xmlData)
 	OutputMessagePool::getInstance()->send(output);
 }
 
-Admin::Admin(): m_currentConnections(0), m_encrypted(false),
+Admin::Admin(): m_currrentConnections(0), m_encrypted(false),
 	m_key_RSA1024XTEA(NULL)
 {
 	std::string strValue = g_config.getString(ConfigManager::ADMIN_ENCRYPTION);
@@ -570,17 +562,17 @@ Admin::~Admin()
 
 bool Admin::addConnection()
 {
-	if(m_currentConnections >= g_config.getNumber(ConfigManager::ADMIN_CONNECTIONS_LIMIT))
+	if(m_currrentConnections >= g_config.getNumber(ConfigManager::ADMIN_CONNECTIONS_LIMIT))
 		return false;
 
-	m_currentConnections++;
+	m_currrentConnections++;
 	return true;
 }
 
 void Admin::removeConnection()
 {
-	if(m_currentConnections > 0)
-		m_currentConnections--;
+	if(m_currrentConnections > 0)
+		m_currrentConnections--;
 }
 
 uint16_t Admin::getPolicy() const
@@ -607,7 +599,7 @@ uint32_t Admin::getOptions() const
 	return ret;
 }
 
-Item* Admin::createMail(const std::string xmlData, std::string& name)
+Item* Admin::createMail(const std::string xmlData, std::string& name, uint32_t& depotId)
 {
 	xmlDocPtr doc = xmlParseMemory(xmlData.c_str(), xmlData.length());
 	if(!doc)
@@ -623,6 +615,17 @@ Item* Admin::createMail(const std::string xmlData, std::string& name)
 	int32_t itemId = ITEM_PARCEL;
 	if(readXMLString(root, "to", strValue))
 		name = strValue;
+
+	if(readXMLString(root, "town", strValue))
+	{
+		Town* town = Towns::getInstance()->getTown(strValue);
+		if(!town)
+			return false;
+
+		depotId = town->getID();
+	}
+	else if(!IOLoginData::getInstance()->getDefaultTownByName(name, depotId)) //use the players default town
+		return false;
 
 	if(readXMLInteger(root, "id", intValue))
 		itemId = intValue;

@@ -20,26 +20,21 @@
 #include "outputmessage.h"
 #include "connection.h"
 #include "game.h"
-#include "resources.h"
-
-#if defined(WINDOWS) && !defined(_CONSOLE)
-#include "gui.h"
-#endif
 
 extern Game g_game;
 
 #ifdef __ENABLE_SERVER_DIAGNOSTIC__
 uint32_t ProtocolOld::protocolOldCount = 0;
-
 #endif
+
 #ifdef __DEBUG_NET_DETAIL__
 void ProtocolOld::deleteProtocolTask()
 {
 	std::clog << "Deleting ProtocolOld" << std::endl;
 	Protocol::deleteProtocolTask();
 }
-
 #endif
+
 void ProtocolOld::disconnectClient(uint8_t error, const char* message)
 {
 	if(OutputMessage_ptr output = OutputMessagePool::getInstance()->getOutputMessage(this, false))
@@ -53,29 +48,24 @@ void ProtocolOld::disconnectClient(uint8_t error, const char* message)
 	getConnection()->close();
 }
 
-void ProtocolOld::onRecvFirstMessage(NetworkMessage& msg)
+bool ProtocolOld::parseFirstPacket(NetworkMessage& msg)
 {
-	if(
-#if defined(WINDOWS) && !defined(_CONSOLE)
-		!GUI::getInstance()->m_connections ||
-#endif
-		g_game.getGameState() == GAMESTATE_SHUTDOWN)
+	if(g_game.getGameState() == GAMESTATE_SHUTDOWN)
 	{
 		getConnection()->close();
-		return;
+		return false;
 	}
 
-	msg.skip(2);
+	/*uint16_t operatingSystem = */msg.get<uint16_t>();
 	uint16_t version = msg.get<uint16_t>();
-
 	msg.skip(12);
 	if(version <= 760)
-		disconnectClient(0x0A, "Only clients with protocol " CLIENT_VERSION_STRING " allowed!");
+		disconnectClient(0x0A, CLIENT_VERSION_STRING);
 
 	if(!RSA_decrypt(msg))
 	{
 		getConnection()->close();
-		return;
+		return false;
 	}
 
 	uint32_t key[4] = {msg.get<uint32_t>(), msg.get<uint32_t>(), msg.get<uint32_t>(), msg.get<uint32_t>()};
@@ -85,5 +75,12 @@ void ProtocolOld::onRecvFirstMessage(NetworkMessage& msg)
 	if(version <= 822)
 		disableChecksum();
 
-	disconnectClient(0x0A, "Only clients with protocol " CLIENT_VERSION_STRING " allowed!");
+	disconnectClient(0x0A, CLIENT_VERSION_STRING);
+	return false;
 }
+
+void ProtocolOld::onRecvFirstMessage(NetworkMessage& msg)
+{
+	parseFirstPacket(msg);
+}
+

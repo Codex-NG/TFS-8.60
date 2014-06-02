@@ -20,7 +20,6 @@
 #endif
 
 #define __OTPCH__
-
 #if defined WINDOWS
 #include <winerror.h>
 #endif
@@ -35,12 +34,7 @@
 #include <boost/function.hpp>
 #include <boost/bind.hpp>
 #include <boost/regex.hpp>
+#include <boost/tokenizer.hpp>
 
 //otserv
-#include "configmanager.h"
 #include "thing.h"
-
-//GUI
-#include "gui.h"
-#include "inputbox.h"
-#include "playerbox.h"

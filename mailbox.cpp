@@ -19,6 +19,8 @@
 
 #include "player.h"
 #include "iologindata.h"
+
+#include "depot.h"
 #include "town.h"
 
 #include "configmanager.h"
@@ -27,43 +29,14 @@
 extern ConfigManager g_config;
 extern Game g_game;
 
-ReturnValue Mailbox::canSend(const Item* item, Creature* actor) const
-{
-	if(item->getID() != ITEM_PARCEL && item->getID() != ITEM_LETTER)
-		return RET_NOTPOSSIBLE;
-
-	if(actor)
-	{
-		if(Player* player = actor->getPlayer())
-		{
-			if(player->hasCondition(CONDITION_MUTED, 2))
-				return RET_YOUAREEXHAUSTED;
-
-			if(player->getMailAttempts() >= g_config.getNumber(ConfigManager::MAIL_ATTEMPTS))
-			{
-				if(Condition* condition = Condition::createCondition(CONDITIONID_DEFAULT,
-					CONDITION_MUTED, g_config.getNumber(ConfigManager::MAIL_BLOCK), 0, false, 2))
-				{
-					player->addCondition(condition);
-					player->setLastMail(1); // auto erase
-				}
-
-				return RET_YOUAREEXHAUSTED;
-			}
-
-			player->setLastMail(OTSYS_TIME());
-			player->addMailAttempt();
-		}
-	}
-
-	return RET_NOERROR;
-}
-
 ReturnValue Mailbox::__queryAdd(int32_t, const Thing* thing, uint32_t,
-	uint32_t, Creature* actor/* = NULL*/) const
+	uint32_t) const
 {
 	if(const Item* item = thing->getItem())
-		return canSend(item, actor);
+	{
+		if(canSend(item))
+			return RET_NOERROR;
+	}
 
 	return RET_NOTPOSSIBLE;
 }
@@ -81,50 +54,90 @@ void Mailbox::__addThing(Creature* actor, int32_t, Thing* thing)
 	if(!item)
 		return;
 
-	if(canSend(item, actor) == RET_NOERROR)
+	if(canSend(item))
 		sendItem(actor, item);
 }
 
 bool Mailbox::sendItem(Creature* actor, Item* item)
 {
+	uint32_t depotId = 0;
 	std::string name;
-	if(!getReceiver(item, name) || name.empty())
+	if(!getRecipient(item, name, depotId) || name.empty() || !depotId)
 		return false;
 
-	return IOLoginData::getInstance()->playerMail(actor, name, item);
+	return IOLoginData::getInstance()->playerMail(actor, name, depotId, item);
 }
 
-bool Mailbox::getReceiver(Item* item, std::string& name)
+bool Mailbox::getDepotId(const std::string& townString, uint32_t& depotId)
+{
+	Town* town = Towns::getInstance()->getTown(townString);
+	if(!town)
+		return false;
+
+	std::string disabledTowns = g_config.getString(ConfigManager::MAILBOX_DISABLED_TOWNS);
+	if(disabledTowns.size())
+	{
+		IntegerVec tmpVec = vectorAtoi(explodeString(disabledTowns, ","));
+		if(tmpVec[0] != 0)
+		{
+			for(IntegerVec::iterator it = tmpVec.begin(); it != tmpVec.end(); ++it)
+			{
+				if(town->getID() == uint32_t(*it))
+					return false;
+			}
+		}
+	}
+
+	depotId = town->getID();
+	return true;
+}
+
+bool Mailbox::getRecipient(Item* item, std::string& name, uint32_t& depotId)
 {
 	if(!item)
 		return false;
 
 	if(item->getID() == ITEM_PARCEL) /**We need to get the text from the label incase its a parcel**/
 	{
-		Container* parcel = item->getContainer();
-		if(parcel)
+		if(Container* parcel = item->getContainer())
 		{
 			for(ItemList::const_iterator cit = parcel->getItems(); cit != parcel->getEnd(); ++cit)
 			{
-				if((*cit)->getID() == ITEM_LABEL)
+				if((*cit)->getID() == ITEM_LABEL && !(*cit)->getText().empty())
 				{
 					item = (*cit);
-					if(item->getText().empty())
-						break;
+					break;
 				}
 			}
 		}
 	}
-	else if(item->getID() != ITEM_LETTER) // The item is somehow not a parcel or letter
+	else if(item->getID() != ITEM_LETTER) /**The item is somehow not a parcel or letter**/
 	{
 		std::clog << "[Error - Mailbox::getReciver] Trying to get receiver from unkown item with id: " << item->getID() << "!" << std::endl;
 		return false;
 	}
 
-	if(!item || item->getText().empty()) // No label or letter found or its empty
+	if(!item || item->getText().empty()) /**No label/letter found or its empty.**/
 		return false;
 
-	name = getFirstLine(item->getText());
+	std::istringstream iss(item->getText(), std::istringstream::in);
+	uint32_t curLine = 0;
+
+	std::string tmp, townString;
+	while(getline(iss, tmp, '\n') && curLine < 2)
+	{
+		if(curLine == 0)
+			name = tmp;
+		else if(curLine == 1)
+			townString = tmp;
+
+		++curLine;
+	}
+
 	trimString(name);
-	return true;
+	if(townString.empty())
+		return false;
+
+	trimString(townString);
+	return getDepotId(townString, depotId);
 }

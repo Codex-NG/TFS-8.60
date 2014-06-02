@@ -15,20 +15,25 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ////////////////////////////////////////////////////////////////////////
 
-#ifndef __TRASHHOLDER__
-#define __TRASHHOLDER__
+#ifndef __DEPOT__
+#define __DEPOT__
+#include "container.h"
 
-#include "tile.h"
-#include "const.h"
-
-class TrashHolder : public Item, public Cylinder
+class Depot : public Container
 {
 	public:
-		TrashHolder(uint16_t type, MagicEffect_t _effect = MAGIC_EFFECT_NONE): Item(type), effect(_effect) {}
-		virtual ~TrashHolder() {}
+		Depot(uint16_t type);
+		virtual ~Depot() {}
 
-		virtual TrashHolder* getTrashHolder() {return this;}
-		virtual const TrashHolder* getTrashHolder() const {return this;}
+		virtual Depot* getDepot() {return this;}
+		virtual const Depot* getDepot() const {return this;}
+
+		//serialization
+		virtual Attr_ReadValue readAttr(AttrTypes_t attr, PropStream& propStream);
+
+		uint32_t getDepotId() const;
+
+		void setMaxDepotLimit(uint32_t count) {depotLimit = count;}
 
 		//cylinder implementations
 		virtual Cylinder* getParent() {return Item::getParent();}
@@ -42,31 +47,30 @@ class TrashHolder : public Item, public Cylinder
 		virtual Creature* getCreature() {return NULL;}
 		virtual const Creature* getCreature() const {return NULL;}
 
-		virtual ReturnValue __queryAdd(int32_t, const Thing*, uint32_t,
-			uint32_t ) const {return RET_NOERROR;}
-		virtual ReturnValue __queryMaxCount(int32_t, const Thing*, uint32_t,
-			uint32_t&, uint32_t) const {return RET_NOERROR;}
-		virtual ReturnValue __queryRemove(const Thing*, uint32_t,
-			uint32_t) const {return RET_NOTPOSSIBLE;}
-		virtual Cylinder* __queryDestination(int32_t&, const Thing*, Item**,
-			uint32_t&) {return this;}
+		virtual ReturnValue __queryAdd(int32_t index, const Thing* thing, uint32_t count,
+			uint32_t flags) const;
 
-		virtual void __addThing(Creature* actor, Thing* thing) {return __addThing(actor, 0, thing);}
-		virtual void __addThing(Creature* actor, int32_t index, Thing* thing);
-
-		virtual void __updateThing(Thing*, uint16_t, uint32_t) {}
-		virtual void __replaceThing(uint32_t, Thing*) {}
-
-		virtual void __removeThing(Thing*, uint32_t) {}
+		virtual ReturnValue __queryMaxCount(int32_t index, const Thing* thing, uint32_t count,
+			uint32_t& maxQueryCount, uint32_t flags) const;
 
 		virtual void postAddNotification(Creature* actor, Thing* thing, const Cylinder* oldParent,
 			int32_t index, cylinderlink_t link = LINK_OWNER);
 		virtual void postRemoveNotification(Creature* actor, Thing* thing, const Cylinder* newParent,
 			int32_t index, bool isCompleteRemoval, cylinderlink_t link = LINK_OWNER);
 
-		MagicEffect_t getEffect() const {return effect;}
+		//overrides
+		virtual bool canRemove() const {return false;}
 
 	private:
-		MagicEffect_t effect;
+		uint32_t depotLimit;
 };
+
+inline uint32_t Depot::getDepotId() const
+{
+	const int32_t* v = getIntegerAttribute("depotid");
+	if(v)
+		return (uint32_t)*v;
+
+	return 0;
+}
 #endif

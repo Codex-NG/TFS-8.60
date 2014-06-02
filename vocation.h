@@ -15,12 +15,35 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ////////////////////////////////////////////////////////////////////////
 
-#ifndef __VOCATION__
-#define __VOCATION__
+#ifndef __OTSERV_VOCATION__
+#define __OTSERV_VOCATION__
 
 #include "otsystem.h"
 #include "enums.h"
-#include "const.h"
+
+enum multiplier_t
+{
+	MULTIPLIER_FIRST = 0,
+	MULTIPLIER_MELEE = MULTIPLIER_FIRST,
+	MULTIPLIER_DISTANCE = 1,
+	MULTIPLIER_DEFENSE = 2,
+	MULTIPLIER_MAGICDEFENSE = 3,
+	MULTIPLIER_ARMOR = 4,
+	MULTIPLIER_MAGIC = 5,
+	MULTIPLIER_HEALING = 6,
+	MULTIPLIER_WAND = 7,
+	MULTIPLIER_MANA = 8,
+	MULTIPLIER_LAST = MULTIPLIER_MANA
+};
+
+enum gain_t
+{
+	GAIN_FIRST = 0,
+	GAIN_HEALTH = GAIN_FIRST,
+	GAIN_MANA = 1,
+	GAIN_SOUL = 2,
+	GAIN_LAST = GAIN_SOUL
+};
 
 class Vocation
 {
@@ -35,16 +58,13 @@ class Vocation
 		uint32_t getId() const {return id;}
 		void setId(int32_t v) {id = v;}
 
-		uint16_t getClientId() const {return clientId;}
-		void setClientId(uint16_t v) {clientId = v;}
-
 		uint32_t getFromVocation() const {return fromVocation;}
 		void setFromVocation(int32_t v) {fromVocation = v;}
 
-		std::string getName() const {return name;}
+		const std::string& getName() const {return name;}
 		void setName(const std::string& v) {name = v;}
 
-		std::string getDescription() const {return description;}
+		const std::string& getDescription() const {return description;}
 		void setDescription(const std::string& v) {description = v;}
 
 		bool isAttackable() const {return attackable;}
@@ -52,12 +72,6 @@ class Vocation
 
 		bool isPremiumNeeded() const {return needPremium;}
 		void setNeedPremium(bool v) {needPremium = v;}
-
-		bool getDropLoot() const {return dropLoot;}
-		void setDropLoot(bool v) {dropLoot = v;}
-
-		bool getLossSkill() const {return skillLoss;}
-		void setLossSkill(bool v) {skillLoss = v;}
 
 		uint32_t getAttackSpeed() const {return attackSpeed;}
 		void setAttackSpeed(uint32_t v) {attackSpeed = v;}
@@ -101,8 +115,7 @@ class Vocation
 		cacheMap cacheSkill[SKILL_LAST + 1];
 		cacheMap cacheMana;
 
-		bool attackable, needPremium, dropLoot, skillLoss;
-		uint16_t clientId;
+		bool attackable, needPremium;
 		int32_t lessLoss, capGain;
 		uint32_t id, fromVocation, baseSpeed, attackSpeed;
 		std::string name, description;

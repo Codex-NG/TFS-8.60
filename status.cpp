@@ -19,7 +19,6 @@
 #include <libxml/parser.h>
 
 #include "status.h"
-#include "const.h"
 #include "tools.h"
 
 #include "connection.h"
@@ -28,7 +27,6 @@
 
 #include "configmanager.h"
 #include "game.h"
-#include "resources.h"
 
 extern ConfigManager g_config;
 extern Game g_game;
@@ -40,19 +38,14 @@ IpConnectMap ProtocolStatus::ipConnectMap;
 
 void ProtocolStatus::onRecvFirstMessage(NetworkMessage& msg)
 {
-	uint32_t ip = getIP();
-	if(ip != LOCALHOST)
+	IpConnectMap::const_iterator it = ipConnectMap.find(getIP());
+	if(it != ipConnectMap.end() && OTSYS_TIME() < it->second + g_config.getNumber(ConfigManager::STATUSQUERY_TIMEOUT))
 	{
-		IpConnectMap::const_iterator it = ipConnectMap.find(ip);
-		if(it != ipConnectMap.end() && OTSYS_TIME() < it->second + g_config.getNumber(ConfigManager::STATUSQUERY_TIMEOUT))
-		{
-			getConnection()->close();
-			return;
-		}
-
-		ipConnectMap[ip] = OTSYS_TIME();
+		getConnection()->close();
+		return;
 	}
 
+	ipConnectMap[getIP()] = OTSYS_TIME();
 	uint8_t type = msg.get<char>();
 	switch(type)
 	{
@@ -82,7 +75,7 @@ void ProtocolStatus::onRecvFirstMessage(NetworkMessage& msg)
 
 		case 0x01:
 		{
-			uint32_t requestedInfo = msg.get<uint16_t>(); // only a byte is necessary, though we could add new infos here
+			uint32_t requestedInfo = msg.get<uint16_t>(); //Only a Byte is necessary, though we could add new infos here
 			if(OutputMessage_ptr output = OutputMessagePool::getInstance()->getOutputMessage(this, false))
 			{
 				TRACK_MESSAGE(output);
@@ -102,35 +95,38 @@ void ProtocolStatus::onRecvFirstMessage(NetworkMessage& msg)
 	getConnection()->close();
 }
 
-#ifdef __DEBUG_NET_DETAIL__
 void ProtocolStatus::deleteProtocolTask()
 {
+#ifdef __DEBUG_NET_DETAIL__
 	std::clog << "Deleting ProtocolStatus" << std::endl;
+#endif
 	Protocol::deleteProtocolTask();
 }
 
-#endif
 std::string Status::getStatusString(bool sendPlayers) const
 {
-	xmlDocPtr doc = xmlNewDoc((const xmlChar*)"1.0");
-	doc->children = xmlNewDocNode(doc, NULL, (const xmlChar*)"tsqp", NULL);
-	xmlNodePtr root = doc->children;
-
 	char buffer[90];
+	xmlDocPtr doc;
+	xmlNodePtr p, root;
+
+	doc = xmlNewDoc((const xmlChar*)"1.0");
+	doc->children = xmlNewDocNode(doc, NULL, (const xmlChar*)"tsqp", NULL);
+	root = doc->children;
+
 	xmlSetProp(root, (const xmlChar*)"version", (const xmlChar*)"1.0");
 
-	xmlNodePtr p = xmlNewNode(NULL,(const xmlChar*)"serverinfo");
+	p = xmlNewNode(NULL,(const xmlChar*)"serverinfo");
 	sprintf(buffer, "%u", (uint32_t)getUptime());
 	xmlSetProp(p, (const xmlChar*)"uptime", (const xmlChar*)buffer);
 	xmlSetProp(p, (const xmlChar*)"ip", (const xmlChar*)g_config.getString(ConfigManager::IP).c_str());
 	xmlSetProp(p, (const xmlChar*)"servername", (const xmlChar*)g_config.getString(ConfigManager::SERVER_NAME).c_str());
-	sprintf(buffer, "%d", (int32_t)g_config.getNumber(ConfigManager::LOGIN_PORT));
+	sprintf(buffer, "%d", g_config.getNumber(ConfigManager::LOGIN_PORT));
 	xmlSetProp(p, (const xmlChar*)"port", (const xmlChar*)buffer);
 	xmlSetProp(p, (const xmlChar*)"location", (const xmlChar*)g_config.getString(ConfigManager::LOCATION).c_str());
 	xmlSetProp(p, (const xmlChar*)"url", (const xmlChar*)g_config.getString(ConfigManager::URL).c_str());
 	xmlSetProp(p, (const xmlChar*)"server", (const xmlChar*)SOFTWARE_NAME);
 	xmlSetProp(p, (const xmlChar*)"version", (const xmlChar*)SOFTWARE_VERSION);
-	xmlSetProp(p, (const xmlChar*)"client", (const xmlChar*)CLIENT_VERSION_STRING);
+	xmlSetProp(p, (const xmlChar*)"client", (const xmlChar*)SOFTWARE_PROTOCOL);
 	xmlAddChild(root, p);
 
 	p = xmlNewNode(NULL,(const xmlChar*)"owner");
@@ -141,7 +137,7 @@ std::string Status::getStatusString(bool sendPlayers) const
 	p = xmlNewNode(NULL,(const xmlChar*)"players");
 	sprintf(buffer, "%d", g_game.getPlayersOnline());
 	xmlSetProp(p, (const xmlChar*)"online", (const xmlChar*)buffer);
-	sprintf(buffer, "%d", (int32_t)g_config.getNumber(ConfigManager::MAX_PLAYERS));
+	sprintf(buffer, "%d", g_config.getNumber(ConfigManager::MAX_PLAYERS));
 	xmlSetProp(p, (const xmlChar*)"max", (const xmlChar*)buffer);
 	sprintf(buffer, "%d", g_game.getPlayersRecord());
 	xmlSetProp(p, (const xmlChar*)"peak", (const xmlChar*)buffer);
@@ -211,7 +207,7 @@ void Status::getInfo(uint32_t requestedInfo, OutputMessage_ptr output, NetworkMe
 		output->putString(g_config.getString(ConfigManager::IP).c_str());
 
 		char buffer[10];
-		sprintf(buffer, "%d", (int32_t)g_config.getNumber(ConfigManager::LOGIN_PORT));
+		sprintf(buffer, "%d", g_config.getNumber(ConfigManager::LOGIN_PORT));
 		output->putString(buffer);
 	}
 
@@ -238,7 +234,7 @@ void Status::getInfo(uint32_t requestedInfo, OutputMessage_ptr output, NetworkMe
 	{
 		output->put<char>(0x20);
 		output->put<uint32_t>(g_game.getPlayersOnline());
-		output->put<uint32_t>((uint32_t)g_config.getNumber(ConfigManager::MAX_PLAYERS));
+		output->put<uint32_t>(g_config.getNumber(ConfigManager::MAX_PLAYERS));
 		output->put<uint32_t>(g_game.getPlayersRecord());
 	}
 
@@ -289,6 +285,6 @@ void Status::getInfo(uint32_t requestedInfo, OutputMessage_ptr output, NetworkMe
 		output->put<char>(0x23);
 		output->putString(SOFTWARE_NAME);
 		output->putString(SOFTWARE_VERSION);
-		output->putString(CLIENT_VERSION_STRING);
+		output->putString(SOFTWARE_PROTOCOL);
 	}
 }

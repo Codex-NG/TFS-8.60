@@ -20,7 +20,6 @@
 #include "networkmessage.h"
 #include "position.h"
 #include "item.h"
-#include "player.h"
 
 SocketCode_t NetworkMessage::read(SOCKET socket, bool ignoreLength, int32_t timeout/* = NETWORK_RETRY_TIME*/)
 {
@@ -118,7 +117,7 @@ SocketCode_t NetworkMessage::write(SOCKET socket, int32_t timeout/* = NETWORK_RE
 	m_buffer[3] = (uint8_t)(m_size >> 8);
 
 	int32_t sent = 0, waiting = 0;
-	do
+  	do
 	{
 		int32_t ret = send(socket, (char*)m_buffer + sent + NETWORK_HEADER_SIZE,
 			std::min(m_size - sent + NETWORK_HEADER_SIZE, 1000), 0);
@@ -172,16 +171,16 @@ Position NetworkMessage::getPosition()
 	return pos;
 }
 
-void NetworkMessage::putString(const char* value, int length, bool addSize/* = true*/)
+void NetworkMessage::putString(const char* value, bool addSize/* = true*/)
 {
-	uint32_t size = (uint32_t)length;
+	uint32_t size = (uint32_t)strlen(value);
 	if(!hasSpace(size + (addSize ? 2 : 0)) || size > 8192)
 		return;
 
 	if(addSize)
 		put<uint16_t>(size);
 
-	memcpy((char*)(m_buffer + m_position), value, length);
+	strcpy((char*)(m_buffer + m_position), value);
 	m_position += size;
 	m_size += size;
 }

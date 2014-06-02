@@ -127,7 +127,7 @@ void ConnectionManager::addAttempt(uint32_t clientIp, int32_t protocolId, bool s
 
 		ipLoginMap[clientIp] = tmp;
 		it = ipLoginMap.find(clientIp);
-	}
+        }
 
 	if(it->second.loginsAmount > g_config.getNumber(ConfigManager::LOGIN_TRIES))
 		it->second.loginsAmount = 0;
@@ -160,7 +160,7 @@ bool ConnectionManager::acceptConnection(uint32_t clientIp)
 
 		ipConnectMap[clientIp] = tmp;
 		return true;
-	}
+        }
 
 	it->second.count++;
 	if(it->second.blockTime > currentTime)
@@ -396,21 +396,6 @@ void Connection::parsePacket(const boost::system::error_code& error)
 		return;
 	}
 
-	uint32_t timePassed = std::max<uint32_t>(1, (time(NULL) - m_timeConnected) + 1);
-	if((++m_packetsSent / timePassed) > (uint32_t)g_config.getNumber(ConfigManager::PACKETS_PER_SECOND))
-	{
-		std::cout << convertIPAddress(getIP()) << " disconnected for exceeding packet per second limit." << std::endl;
-		close();;
-		m_connectionLock.unlock();
-		return;
-	}
-
-	if(timePassed > 2)
-	{
-		m_timeConnected = time(NULL);
-		m_packetsSent = 0;
-	}
-
 	--m_pendingRead;
 	uint32_t length = m_msg.size() - m_msg.position() - 4, checksumReceived = m_msg.get<uint32_t>(true), checksum = 0;
 	if(length > 0)
@@ -502,7 +487,7 @@ bool Connection::send(OutputMessage_ptr msg)
 		close();
 	}
 	else
-	{
+	{	
 		#ifdef __DEBUG_NET__
 		std::clog << "Connection::send Adding to queue " << msg->size() << std::endl;
 		#endif
@@ -546,18 +531,6 @@ uint32_t Connection::getIP() const
 		return htonl(ip.address().to_v4().to_ulong());
 
 	PRINT_ASIO_ERROR("Getting remote ip");
-	return 0;
-}
-
-uint32_t Connection::getEndpoint() const
-{
-	//ip is expressed in network byte order
-	boost::system::error_code error;
-	const boost::asio::ip::tcp::endpoint ip = m_socket->local_endpoint(error);
-	if(!error)
-		return htonl(ip.address().to_v4().to_ulong());
-
-	PRINT_ASIO_ERROR("Getting local ip");
 	return 0;
 }
 
@@ -682,4 +655,3 @@ void Connection::handleWriteTimeout(boost::weak_ptr<Connection> weak, const boos
 		connection->onWriteTimeout();
 	}
 }
-
